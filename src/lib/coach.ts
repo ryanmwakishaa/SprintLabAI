@@ -1,4 +1,4 @@
-import type { ReadinessLog, WorkoutSession, PerformanceResult, PerformanceMetric } from './types';
+import { TIMED_METRICS, STRENGTH_METRICS, type ReadinessLog, type WorkoutSession, type PerformanceResult, type PerformanceMetric } from './types';
 
 export interface ReadinessAdjustment {
   status: 'ready' | 'modify' | 'recover';
@@ -65,19 +65,20 @@ export function assessReadiness(
     reasons.push('High general fatigue: avoid another high CNS demand today.');
   }
 
-  // Consecutive high-intensity days check
-  const sorted = [...recentSessions]
-    .filter((s) => s.status === 'completed')
-    .sort((a, b) => (a.session_date < b.session_date ? 1 : -1));
-  const yesterday = sorted[0];
-  if (yesterday) {
-    const highIntensity = yesterday.intensity === 'high' || yesterday.intensity === 'max';
-    const oneDayAgo = new Date();
-    oneDayAgo.setDate(oneDayAgo.getDate() - 1);
-    if (highIntensity && yesterday.session_date === oneDayAgo.toISOString().slice(0, 10)) {
-      allowHighIntensity = false;
-      reasons.push('Yesterday was a high-intensity session — 48h minimum between max CNS efforts.');
-    }
+  // Keep at least 48 hours between completed high-intensity sessions.
+  // Use the check-in date, not the device clock, so historical/replanned sessions
+  // are assessed deterministically.
+  const checkInDate = new Date(`${log.log_date}T00:00:00Z`);
+  const recentHighSessions = recentSessions.filter((session) => {
+    if (session.status !== 'completed' || !['high', 'max'].includes(session.intensity)) return false;
+    const sessionDate = new Date(`${session.session_date}T00:00:00Z`);
+    const hoursSince = (checkInDate.getTime() - sessionDate.getTime()) / 3600000;
+    return hoursSince >= 0 && hoursSince < 48;
+  });
+  if (recentHighSessions.length > 0) {
+    allowHighIntensity = false;
+    multiplier = Math.min(multiplier, 0.7);
+    reasons.push('A high-intensity session was completed within the last 48 hours. Replace today’s speed work with recovery or low-intensity work.');
   }
 
   return {
@@ -102,37 +103,52 @@ export interface ProgressAnalysis {
 }
 
 export function analyseMetricProgress(results: PerformanceResult[], metric: PerformanceMetric): ProgressAnalysis | null {
+  // Demo values must never influence an athlete's coaching feedback.
   const metricResults = results
-    .filter((r) => r.metric === metric)
+    .filter((r) => r.metric === metric && !r.is_sample)
     .sort((a, b) => (a.result_date < b.result_date ? -1 : 1));
   if (metricResults.length < 2) return null;
 
-  const first = metricResults[0];
-  const last = metricResults[metricResults.length - 1];
+  // Hand and electronic sprint times are not directly comparable. Analyse the
+  // timing method with the most observations rather than mixing both systems.
+  const timed = TIMED_METRICS.includes(metric);
+  const selectedTiming = timed
+    ? (['electronic', 'hand'] as const).sort((a, b) =>
+        metricResults.filter((r) => r.timing_method === b).length -
+        metricResults.filter((r) => r.timing_method === a).length
+      )[0]
+    : null;
+  const comparable = selectedTiming
+    ? metricResults.filter((r) => r.timing_method === selectedTiming)
+    : metricResults;
+  if (comparable.length < 2) return null;
+
+  const first = comparable[0];
+  const last = comparable[comparable.length - 1];
   if (first.result_date === last.result_date) return null;
 
-  const timed = metric === 'bodyweight' || metric === 'squat_1rm' || metric === 'trap_bar_1rm' || metric === 'nlbh' ? metric === 'squat_1rm' || metric === 'trap_bar_1rm' || metric === 'nlbh' : false;
-  const isLowerBetter = !timed; // sprint times: lower is better; strength/bodyweight: higher is "more"
   const change = ((last.value - first.value) / first.value) * 100;
-  const improving = isLowerBetter ? change < 0 : change > 0;
   const absChange = Math.abs(change);
+  const isBodyweight = metric === 'bodyweight';
+  const improving = timed ? change < 0 : STRENGTH_METRICS.includes(metric) ? change > 0 : false;
 
   if (absChange < 1) {
     return {
       improving: false,
       plateau: true,
-      message: `No meaningful change in ${metric} since ${first.result_date} — a plateau. Consider a stimulus change or a deload week.`,
+      message: isBodyweight
+        ? `Bodyweight has remained stable since ${first.result_date}.`
+        : `No meaningful change in ${metric} since ${first.result_date} — a plateau. Review the training stimulus and recovery before changing the programme.`,
       trendPercent: change,
     };
   }
-  return {
-    improving,
-    plateau: false,
-    message: improving
-      ? `${metric} trending the right way (${change.toFixed(1)}%) since ${first.result_date}.`
-      : `${metric} has moved the wrong way (${change.toFixed(1)}%) since ${first.result_date} — review recovery and nutrition.`,
-    trendPercent: change,
-  };
+
+  const timingLabel = timed ? ` (${selectedTiming}-timed)` : '';
+  const message = isBodyweight
+    ? `Bodyweight changed ${change > 0 ? 'up' : 'down'} ${absChange.toFixed(1)}% since ${first.result_date}; interpret this alongside strength, nutrition and the athlete’s goal.`
+    : `${metric}${timingLabel} ${improving ? 'is trending the right way' : 'has moved in the wrong direction'} (${change.toFixed(1)}%) since ${first.result_date}.`;
+
+  return { improving, plateau: false, message, trendPercent: change };
 }
 
 export function generateCoachNotes(
