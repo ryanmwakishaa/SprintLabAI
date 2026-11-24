@@ -74,7 +74,6 @@ export function generateWeekSessions(
   const assessment = readinessLog
     ? assessReadiness({ ...readinessLog, readiness_score: computeReadiness(readinessLog) }, recentSessions)
     : null;
-  const multiplier = assessment?.recommended_multiplier ?? 1.0;
 
   return pattern.map((key, idx) => {
     const date = new Date(weekStart);
@@ -110,25 +109,83 @@ export function generateWeekSessions(
     }
 
     const template = SESSION_TEMPLATES[key];
-    const planned = template.build(phase, multiplier);
-    const session: WorkoutSession = {
+    // A check-in describes today's condition, not the athlete's condition for
+    // every future day in the week.
+    const dayAssessment = readinessLog && isoDate(date) === readinessLog.log_date ? assessment : null;
+    const multiplier = dayAssessment?.recommended_multiplier ?? (phase === 'Return to Training' ? 0.65 : 1);
+    let planned = template.build(phase, multiplier);
+    let intensity = template.intensity;
+    let title = template.title;
+    let objective = template.objective;
+    let dayType = template.dayType;
+    let coachNotes = dayAssessment
+      ? generateCoachNotes(dayAssessment, phase, template.dayType)
+      : 'Provisional session. Complete today’s readiness check before training and re-plan if recovery is below normal.';
+
+    if (dayAssessment && !dayAssessment.allow_high_intensity && ['high', 'max'].includes(template.intensity)) {
+      // Do not merely warn about high intensity: remove the sprint/plyometric
+      // work from today's session and replace it with low-stress recovery.
+      planned = {
+        blocks: [{
+          title: 'Readiness-adjusted recovery',
+          purpose: 'Protect recovery today. Resume high-quality sprinting when readiness and spacing between hard sessions allow it.',
+          items: [
+            { name: 'Easy walk or bike', detail: '10-15 minutes at conversational effort. Stop if symptoms worsen.', sets: 1, reps: '10-15 min' },
+            { name: 'Gentle mobility', detail: 'Pain-free hip, ankle and thoracic mobility. No aggressive stretching.', sets: 1, reps: '8-10 min' },
+            { name: 'Breathing reset', detail: 'Slow nasal breathing and relaxed exhalations.', sets: 1, reps: '3-5 min' },
+          ],
+        }],
+        estimated_duration_min: 25,
+      };
+      intensity = 'low';
+      title = 'Recovery Session — Sprint Work Modified';
+      objective = 'Today’s high-intensity work has been replaced because your readiness check does not support maximal sprinting.';
+      dayType = 'Recovery / Modified';
+      coachNotes += ' The original high-intensity sprint and plyometric blocks have been removed, not just reduced.';
+    } else if (multiplier < 1) {
+      // Apply the reduction to work sets. Warm-ups, mobility and cooldowns stay intact.
+      planned = {
+        ...planned,
+        blocks: planned.blocks.map((block) => {
+          const isPreparation = /warm-up|mobility|cooldown/i.test(block.title);
+          if (isPreparation) return block;
+          return {
+            ...block,
+            items: block.items.map((item) => ({
+              ...item,
+              sets: item.sets ? Math.max(1, Math.floor(item.sets * multiplier)) : item.sets,
+            })),
+          };
+        }),
+      };
+    }
+
+    // Return-to-training is deliberately conservative: avoid stacking a second
+    // acceleration day and remove depth jumps/bounding from the early rebuild.
+    if (phase === 'Return to Training' && !dayAssessment?.allow_high_intensity) {
+      planned = {
+        ...planned,
+        blocks: planned.blocks.map((block) => ({
+          ...block,
+          items: block.items.filter((item) => !/depth jump|bounding|pogo|sled|150m|120m|200m race/i.test(item.name)),
+        })).filter((block) => block.items.length > 0),
+      };
+    }
+
+    return {
       session_date: isoDate(date),
       phase,
-      day_type: template.dayType,
-      title: template.title,
-      objective: template.objective,
-      intensity: template.intensity,
+      day_type: dayType,
+      title,
+      objective,
+      intensity,
       planned,
       completed_items: [],
       status: 'in_progress',
-      coach_notes: '',
+      coach_notes: coachNotes,
       volume_multiplier: multiplier,
       was_overridden: false,
     };
-    session.coach_notes = assessment
-      ? generateCoachNotes(assessment, phase, template.dayType)
-      : `Today is a ${template.dayType.toLowerCase()} day in your ${phase} phase. You are clear to work at the full planned volume and intensity.`;
-    return session;
   });
 }
 
