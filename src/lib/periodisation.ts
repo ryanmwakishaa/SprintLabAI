@@ -28,7 +28,7 @@ export const PHASE_DESCRIPTIONS: Record<Phase, string> = {
 // Weekly microcycle pattern per phase, keyed by day of week (Monday=0)
 const WEEK_PATTERNS: Record<string, Array<string | null>> = {
   'Return to Training': [
-    'acceleration', 'mobility', 'tempo', 'strength', 'mobility', 'acceleration', null,
+    'acceleration', 'mobility', 'tempo', 'strength', 'mobility', null, null,
   ],
   'General Preparation': [
     'acceleration', 'mobility', 'tempo', 'strength', 'mobility', 'maxvelocity', null,
