@@ -113,7 +113,7 @@ export function generateWeekSessions(
     // every future day in the week.
     const dayAssessment = readinessLog && isoDate(date) === readinessLog.log_date ? assessment : null;
     const multiplier = dayAssessment?.recommended_multiplier ?? (phase === 'Return to Training' ? 0.65 : 1);
-    let planned = template.build(phase, multiplier);
+    let planned = template.build(phase, 1);
     let intensity = template.intensity;
     let title = template.title;
     let objective = template.objective;
@@ -146,6 +146,7 @@ export function generateWeekSessions(
       // Apply the reduction to work sets. Warm-ups, mobility and cooldowns stay intact.
       planned = {
         ...planned,
+        estimated_duration_min: Math.round(planned.estimated_duration_min * (0.7 + 0.3 * multiplier)),
         blocks: planned.blocks.map((block) => {
           const isPreparation = /warm-up|mobility|cooldown/i.test(block.title);
           if (isPreparation) return block;
