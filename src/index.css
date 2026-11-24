@@ -1,0 +1,51 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: dark;
+}
+
+html,
+body {
+  background-color: #0b0d10;
+  color: #e5e7eb;
+  -webkit-tap-highlight-color: transparent;
+  overscroll-behavior-y: none;
+}
+
+body {
+  font-family: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  line-height: 1.5;
+}
+
+/* Reusable card surface */
+.card {
+  @apply rounded-2xl border border-white/5 bg-zinc-900/60 p-4;
+}
+
+.btn-primary {
+  @apply w-full rounded-xl bg-emerald-500 px-4 py-3 font-semibold text-zinc-950 transition active:scale-[0.98] disabled:opacity-50;
+}
+
+.btn-ghost {
+  @apply w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 font-medium text-zinc-100 transition active:scale-[0.98] disabled:opacity-50;
+}
+
+.input {
+  @apply w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 text-zinc-100 placeholder-zinc-500 outline-none focus:border-emerald-500/60;
+}
+
+.label {
+  @apply mb-1.5 block text-xs font-medium uppercase tracking-wide text-zinc-400;
+}
+
+/* Hide number input spinners */
+input[type='number']::-webkit-outer-spin-button,
+input[type='number']::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+input[type='number'] {
+  -moz-appearance: textfield;
+}
