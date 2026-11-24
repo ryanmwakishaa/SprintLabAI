@@ -116,11 +116,10 @@ export function analyseMetricProgress(results: PerformanceResult[], metric: Perf
   // Hand and electronic sprint times are not directly comparable. Analyse the
   // timing method with the most observations rather than mixing both systems.
   const timed = TIMED_METRICS.includes(metric);
+  const electronicCount = metricResults.filter((r) => r.timing_method === 'electronic').length;
+  const handCount = metricResults.filter((r) => r.timing_method === 'hand').length;
   const selectedTiming = timed
-    ? (['electronic', 'hand'] as const).sort((a, b) =>
-        metricResults.filter((r) => r.timing_method === b).length -
-        metricResults.filter((r) => r.timing_method === a).length
-      )[0]
+    ? (electronicCount >= handCount ? 'electronic' : 'hand')
     : null;
   const comparable = selectedTiming
     ? metricResults.filter((r) => r.timing_method === selectedTiming)
