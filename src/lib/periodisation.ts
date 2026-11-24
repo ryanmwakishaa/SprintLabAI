@@ -122,7 +122,8 @@ export function generateWeekSessions(
       ? generateCoachNotes(dayAssessment, phase, template.dayType)
       : 'Provisional session. Complete today’s readiness check before training and re-plan if recovery is below normal.';
 
-    if (dayAssessment && !dayAssessment.allow_high_intensity && ['high', 'max'].includes(template.intensity)) {
+    const missingTodayCheckIn = !dayAssessment && isoDate(date) === isoDate(new Date());
+    if (((dayAssessment && !dayAssessment.allow_high_intensity) || missingTodayCheckIn) && ['high', 'max'].includes(template.intensity)) {
       // Do not merely warn about high intensity: remove the sprint/plyometric
       // work from today's session and replace it with low-stress recovery.
       planned = {
@@ -139,9 +140,13 @@ export function generateWeekSessions(
       };
       intensity = 'low';
       title = 'Recovery Session — Sprint Work Modified';
-      objective = 'Today’s high-intensity work has been replaced because your readiness check does not support maximal sprinting.';
+      objective = missingTodayCheckIn
+        ? 'Complete your readiness check-in before maximal sprinting. Today’s high-intensity work is held back until recovery status is known.'
+        : 'Today’s high-intensity work has been replaced because your readiness check does not support maximal sprinting.';
       dayType = 'Recovery / Modified';
-      coachNotes += ' The original high-intensity sprint and plyometric blocks have been removed, not just reduced.';
+      coachNotes += missingTodayCheckIn
+        ? ' No readiness check-in was available, so maximal sprinting and plyometrics are held back today.'
+        : ' The original high-intensity sprint and plyometric blocks have been removed, not just reduced.';
     } else if (multiplier < 1) {
       // Apply the reduction to work sets. Warm-ups, mobility and cooldowns stay intact.
       planned = {
