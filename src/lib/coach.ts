@@ -57,8 +57,9 @@ export function assessReadiness(
     multiplier = Math.min(multiplier, 0.7);
   }
   if (log.soreness >= 4) {
-    reasons.push('High soreness: extended warm-up and mobility work prioritised; reduce external load.');
-    multiplier = Math.min(multiplier, 0.8);
+    allowHighIntensity = false;
+    reasons.push('High soreness: remove maximal sprinting and heavy explosive work today; use pain-free recovery work.');
+    multiplier = Math.min(multiplier, 0.7);
   }
   if (log.fatigue >= 4) {
     allowHighIntensity = false;
@@ -80,6 +81,9 @@ export function assessReadiness(
     multiplier = Math.min(multiplier, 0.7);
     reasons.push('A high-intensity session was completed within the last 48 hours. Replace today’s speed work with recovery or low-intensity work.');
   }
+
+  if (!allowHighIntensity && status === 'ready') status = 'modify';
+  if (recentHighSessions.length > 0 || log.readiness_score < 60 || log.fatigue >= 4) status = 'recover';
 
   return {
     status,
@@ -185,11 +189,11 @@ export function calorieTarget(weightKg: number): number {
 }
 
 export function shouldRecommendDeload(recentSessions: WorkoutSession[]): boolean {
-  const last7 = recentSessions.filter((s) => {
-    const d = new Date();
-    d.setDate(d.getDate() - 7);
-    return new Date(s.session_date) >= d;
-  });
+  const cutoff = new Date();
+  cutoff.setDate(cutoff.getDate() - 7);
+  const last7 = recentSessions.filter((s) =>
+    s.status === 'completed' && new Date(`${s.session_date}T00:00:00`) >= cutoff
+  );
   const highIntensityCount = last7.filter((s) => s.intensity === 'high' || s.intensity === 'max').length;
   const avgRpe =
     last7.filter((s) => s.rpe).reduce((acc, s) => acc + (s.rpe ?? 0), 0) /
