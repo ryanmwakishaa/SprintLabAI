@@ -177,6 +177,24 @@ export function DataProvider({ children }: { children: ReactNode }) {
     saveReadiness: (log) => wrapped(async () => {
       const withScore = { ...log, readiness_score: computeReadiness(log) };
       await db.upsertReadinessLog(withScore);
+
+      // Rebuild today's unstarted session immediately after the athlete checks in.
+      // Never overwrite a session that has already been started or completed.
+      const phase = data.phases.find((p) => p.start_date <= log.log_date && p.end_date >= log.log_date)?.phase
+        ?? data.phases[0]?.phase;
+      if (phase) {
+        const week = generateWeekSessions(
+          weekStartDate(new Date(`${log.log_date}T00:00:00`)),
+          phase,
+          withScore,
+          data.sessions,
+        );
+        const todaySession = week.find((session) => session.session_date === log.log_date);
+        const existing = data.sessions.find((session) => session.session_date === log.log_date);
+        if (todaySession && (!existing || (existing.status === 'in_progress' && existing.completed_items.length === 0))) {
+          await db.saveWorkoutSession({ ...todaySession, id: existing?.id });
+        }
+      }
       await refresh();
     }),
     saveSession: (s) => wrapped(() => db.saveWorkoutSession(s)),
